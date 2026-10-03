@@ -21,7 +21,7 @@ SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
 # Custos por lado (perp Binance USDT-M, sem descontos): taker 0.05% + slippage 0.03%
 FEE_SIDE = 0.00055  # Bybit taker (perp USDT) sem desconto VIP
 SLIP_SIDE = 0.0003
-COST_RT = 2 * (FEE_SIDE + SLIP_SIDE)          # 0.16% ida+volta
+COST_RT = 2 * (FEE_SIDE + SLIP_SIDE)          # 0.17% ida+volta
 FUNDING_8H = 0.0001                            # 0.01%/8h cobrado SEMPRE (long e short) — conservador
 
 
