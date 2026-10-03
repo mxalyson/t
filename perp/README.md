@@ -66,7 +66,11 @@ muito o resultado.
 | `fetch_history.py` | Download do histórico (Binance spot, mesma fonte do treino) |
 | `live.py` | Executor na Bybit |
 
-## Como usar na Bybit
+## Robô (paper ou live) no seu computador
+
+Veja **`GUIA_ROBO.md`**: `.env`, Telegram, conta Demo da Bybit, execução oficial × maker e protocolo do `VEREDITO.md`.
+
+## Como usar na Bybit (antigo)
 
 ```bash
 pip install pandas numpy lightgbm numba pyarrow requests pybit

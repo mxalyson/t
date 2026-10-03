@@ -1,4 +1,6 @@
-"""Executor ao vivo na Bybit (perp USDT linear). Rodar logo após o fechamento de cada vela
+"""[OBSOLETO — use run_bot.py, veja GUIA_ROBO.md]
+
+Executor ao vivo na Bybit (perp USDT linear). Rodar logo após o fechamento de cada vela
 (ex.: 2h → cron "1 */2 * * *" UTC).
 
   * Sinal: mesmas features do backtest, calculadas com candles SPOT da Binance (mesma fonte do

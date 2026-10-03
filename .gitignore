@@ -2,3 +2,7 @@ __pycache__/
 state.json
 pq/
 paper_v1/
+.env
+.venv/
+runtime/
+models_new/
