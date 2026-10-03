@@ -54,7 +54,7 @@ def simulate(cd, risk=0.005, max_pos=10, max_net=10, max_lev=1.0, equity0=1.0):
             else:
                 still.append(p)
         open_pos = still
-        for _, r in grp.iterrows():
+        for r in grp.itertuples(index=False):
             if r.symbol in busy or len(open_pos) >= max_pos:
                 continue
             net_dir = sum(p[2] for p in open_pos)
