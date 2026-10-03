@@ -9,6 +9,8 @@ Convenções anti look-ahead:
   * No treino walk-forward, só entram amostras cujo rótulo terminou ANTES do início do
     período de teste (purge de H+2 barras + embargo).
 """
+import os
+
 import numpy as np
 import pandas as pd
 from numba import njit
@@ -79,6 +81,13 @@ def symbol_features(df, bars_per_day):
     f["body"] = (c - o) / rng
     f["upper_wick"] = (h - np.maximum(c, o)) / rng
     f["lower_wick"] = (np.minimum(c, o) - l) / rng
+    if os.environ.get("FEATS") == "v2":
+        # tendência de prazo longo (em dias), todas causais
+        for d in [14, 30, 60, 120]:
+            k = d * bars_per_day
+            f[f"lt_ret_{d}d"] = np.log(c / c.shift(k)) / (vol * np.sqrt(k))
+        f["lt_ma_dist_100d"] = np.log(c / c.rolling(100 * bars_per_day, min_periods=50 * bars_per_day).mean())
+        f["lt_dd_from_high_90d"] = c / h.rolling(90 * bars_per_day, min_periods=30 * bars_per_day).max() - 1
     f["hour"] = df.index.hour
     f["dow"] = df.index.dayofweek
     return f

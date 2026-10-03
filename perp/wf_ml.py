@@ -5,6 +5,7 @@ rótulo (triple-barrier) terminou antes do início de M menos um embargo.
 
 Uso: python wf_ml.py PQ_DIR ITV TP SL H TEST_START TEST_END OUT.parquet [train_years]
 """
+import os
 import sys
 import time
 
@@ -16,9 +17,19 @@ from lib import (SYMBOLS, atr, label_all, load, month_starts, net_return, panel_
 
 PARAMS = dict(objective="binary", learning_rate=0.03, num_leaves=15, min_data_in_leaf=400,
               feature_fraction=0.7, bagging_fraction=0.7, bagging_freq=1, lambda_l2=10.0,
-              verbose=-1, num_threads=int(__import__("os").environ.get("NT", 4)), seed=7)
+              verbose=-1, num_threads=int(os.environ.get("NT", 4)), seed=7)
 N_ROUNDS = 300
 DROP = ["symbol", "y_long", "y_short", "r_long", "r_short", "end_long", "end_short", "t"]
+
+
+def seeds():
+    return [int(x) for x in os.environ.get("SEEDS", os.environ.get("SEED", "7")).split(",")]
+
+
+def fit_models(trs, feats, side):
+    """Um LightGBM por semente (a previsão final é a média)."""
+    ds = lgb.Dataset(trs[feats], trs[f"y_{side}"], categorical_feature=["sym"], free_raw_data=False)
+    return [lgb.train({**PARAMS, "seed": sd}, ds, N_ROUNDS) for sd in seeds()]
 
 
 def build_panel(pq, itv, tp, sl, H, end):
@@ -65,9 +76,7 @@ def walk_forward(P, test_start, test_end, bh, H, train_years=None, embargo_bars=
         for side in ["long", "short"]:
             # purge: apenas rótulos já conhecidos antes do corte
             trs = tr[(tr[f"end_{side}"] < cut) & tr[f"y_{side}"].notna()]
-            ds = lgb.Dataset(trs[feats], trs[f"y_{side}"], categorical_feature=["sym"], free_raw_data=True)
-            mdl = lgb.train(PARAMS, ds, N_ROUNDS)
-            out[f"p_{side}"] = mdl.predict(te[feats])
+            out[f"p_{side}"] = np.mean([m.predict(te[feats]) for m in fit_models(trs, feats, side)], axis=0)
             out[f"base_{side}"] = trs[f"y_{side}"].mean()
         preds.append(out)
         print(m0.date(), len(trs), f"{time.strftime('%H:%M:%S')}", flush=True)

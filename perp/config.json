@@ -1,0 +1,9 @@
+{
+ "_nota": "Configuração CONGELADA em 2026-10-03 antes do teste no holdout (out/2025 em diante).",
+ "interval": "2h", "tp": 3.0, "sl": 1.5, "H": 48,
+ "thr": 0.12, "rule": "edge",
+ "holdout_start": "2025-10-01",
+ "env": {"SEEDS": "7,11", "NT": "4"},
+ "portfolio": {"risk": 0.005, "max_pos": 4, "max_net": 3, "max_lev": 2},
+ "sleeves": [{"name": "perp2h", "interval": "2h", "tp": 3.0, "sl": 1.5, "H": 48, "thr": 0.12}]
+}
