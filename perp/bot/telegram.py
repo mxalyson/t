@@ -39,4 +39,4 @@ class Telegram:
 
 
 def esc(x):
-    return html.escape(str(x))
+    return html.escape(str(x), quote=False)

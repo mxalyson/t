@@ -127,6 +127,12 @@ class Trader:
         now = self.clock()
         try:
             self.broker.tick(now)
+        except Exception as e:  # noqa: BLE001
+            # falha temporária de dados no paper: o resto do ciclo (sinais, entradas) segue normalmente
+            self.log(f"Aviso: {e}")
+            self.event("erro_dados", erro=str(e))
+            self.tg.send(f"⚠️ {esc(str(e)[:400])}", key="tick", every=1800)
+        try:
             for sym in list(self.state["pending"]):
                 self._manage_entry(sym, now)
             for sym in list(self.state["positions"]):

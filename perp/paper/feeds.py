@@ -16,16 +16,34 @@ BCOLS = ["open_time", "open", "high", "low", "close", "volume", "close_time",
          "quote_volume", "trades", "taker_buy_base", "taker_buy_quote", "ignore"]
 
 
+class ApiError(RuntimeError):
+    pass
+
+
+# códigos da Bybit que valem nova tentativa (limite de requisições, sobrecarga, timeout interno)
+_RETRY_CODES = {10000, 10006, 10016, 10018, 10429}
+
+
 def _get(url, params, tries=4):
+    """GET com novas tentativas. Respostas da Bybit com retCode != 0 viram ApiError com a mensagem."""
+    last = None
     for k in range(tries):
         try:
             r = requests.get(url, params=params, timeout=20)
             r.raise_for_status()
-            return r.json()
-        except Exception:
-            if k == tries - 1:
-                raise
+            j = r.json()
+        except Exception as e:  # noqa: BLE001
+            last = e
+        else:
+            if not isinstance(j, dict) or j.get("retCode", 0) == 0:
+                return j
+            last = ApiError(f"Bybit {url.rsplit('/', 1)[-1]} {params.get('symbol', '')}: "
+                            f"{j.get('retMsg')} (retCode {j.get('retCode')})")
+            if j.get("retCode") not in _RETRY_CODES:
+                raise last
+        if k < tries - 1:
             time.sleep(2 ** (k + 1))
+    raise last
 
 
 def _ms(ts):
@@ -52,6 +70,34 @@ class LiveFeed:
 
     def path(self, symbol, start, end):
         """Velas de 1 min do perp Bybit com abertura em [start, end)."""
+        try:
+            return self._path_forward(symbol, start, end)
+        except ApiError:
+            return self._path_backward(symbol, start, end)
+
+    def _path_backward(self, symbol, start, end):
+        """Alternativa: pede blocos terminando em `end` (só end + limit) até cobrir `start`."""
+        rows, stop, first = [], _ms(end) - 1, _ms(start)
+        while stop >= first:
+            j = _get(f"{BYBIT}/kline", {"category": "linear", "symbol": symbol, "interval": "1",
+                                        "end": stop, "limit": 1000})["result"]["list"]
+            if not j:
+                break
+            rows += j
+            oldest = min(int(x[0]) for x in j)
+            if oldest <= first or len(j) < 1000:
+                break
+            stop = oldest - 1
+        return self._frame(rows, start, end)
+
+    @staticmethod
+    def _frame(rows, start, end):
+        df = pd.DataFrame(rows, columns=["t", "open", "high", "low", "close", "volume", "turnover"]).astype(float)
+        df["ts"] = pd.to_datetime(df["t"].astype(np.int64), unit="ms", utc=True)
+        df = df.drop_duplicates("ts").set_index("ts").sort_index()
+        return df[(df.index >= pd.Timestamp(start)) & (df.index + pd.Timedelta(minutes=1) <= pd.Timestamp(end))]
+
+    def _path_forward(self, symbol, start, end):
         rows, cur = [], _ms(start)
         stop = _ms(end)
         while cur < stop:
@@ -65,10 +111,7 @@ class LiveFeed:
             if nxt <= cur:
                 break
             cur = nxt
-        df = pd.DataFrame(rows, columns=["t", "open", "high", "low", "close", "volume", "turnover"]).astype(float)
-        df["ts"] = pd.to_datetime(df["t"].astype(np.int64), unit="ms", utc=True)
-        df = df.drop_duplicates("ts").set_index("ts")
-        return df[(df.index >= pd.Timestamp(start)) & (df.index + pd.Timedelta(minutes=1) <= pd.Timestamp(end))]
+        return self._frame(rows, start, end)
 
     def funding(self, symbol, start, end):
         """Eventos de funding (timestamp, taxa) do perp Bybit em (start, end]."""

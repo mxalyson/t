@@ -189,25 +189,40 @@ class PaperBroker:
 
     # ------------------------------------------------------------ simulação no tempo
     def tick(self, now):
+        """Processa os minutos desde a última checagem. Falha num símbolo não afeta os outros:
+        o relógio dele não avança e o mesmo período é tentado de novo no próximo ciclo."""
         end = pd.Timestamp(now).floor("min")
         syms = {o["symbol"] for o in self.st["orders"].values() if o["status"] in ("New", "PartiallyFilled")}
         syms |= {s for s, p in self.st["positions"].items() if p["qty"]}
-        for sym in syms:
-            start = pd.Timestamp(self.st["last_tick"].get(sym, str(end)))
-            if end <= start:
-                continue
-            bars = self.m.path(sym, start, end)
-            fund = self.m.funding(sym, start, end) if self._pos(sym)["qty"] else []
-            for ts, b in bars.iterrows():
-                for ft, rate in [f for f in fund if start < f[0] <= ts]:
-                    p = self._pos(sym)
-                    if p["qty"]:
-                        pnl = -p["qty"] * b.open * rate
-                        self.st["cash"] += pnl
-                        self.st["funding"].append({"time": str(ft), "symbol": sym, "rate": rate, "pnl": pnl})
-                fund = [f for f in fund if f[0] > ts]
-                self._process_bar(sym, ts, b)
-            self.st["last_tick"][sym] = str(end)
+        errors = []
+        for sym in sorted(syms):
+            try:
+                self._tick_symbol(sym, end)
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"{sym}: {e}")
+        if errors:
+            raise RuntimeError("dados de 1 min indisponíveis (nova tentativa no próximo ciclo) — " + " | ".join(errors))
+
+    def _tick_symbol(self, sym, end):
+        start = pd.Timestamp(self.st["last_tick"].get(sym, str(end)))
+        if end <= start:
+            return
+        bars = self.m.path(sym, start, end)
+        if not len(bars):
+            return  # minutos ainda não publicados: tenta de novo no próximo ciclo
+        # avança só até a última vela recebida (nunca pula um minuto não publicado)
+        end = min(end, bars.index[-1] + pd.Timedelta(minutes=1))
+        fund = self.m.funding(sym, start, end) if self._pos(sym)["qty"] else []
+        for ts, b in bars.iterrows():
+            for ft, rate in [f for f in fund if start < f[0] <= ts]:
+                p = self._pos(sym)
+                if p["qty"]:
+                    pnl = -p["qty"] * b.open * rate
+                    self.st["cash"] += pnl
+                    self.st["funding"].append({"time": str(ft), "symbol": sym, "rate": rate, "pnl": pnl})
+            fund = [f for f in fund if f[0] > ts]
+            self._process_bar(sym, ts, b)
+        self.st["last_tick"][sym] = str(end)
 
     def _process_bar(self, sym, ts, b):
         live = [o for o in self.st["orders"].values() if o["symbol"] == sym and o["status"] in ("New", "PartiallyFilled")
