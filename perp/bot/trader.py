@@ -67,6 +67,38 @@ class Trader:
         json.dump(self.state, open(tmp, "w"), indent=1, default=str)
         os.replace(tmp, self.state_path)
 
+    def log(self, text):
+        """Imprime no terminal e grava em console.log."""
+        line = f"[{self.clock():%Y-%m-%d %H:%M:%S}] {text}"
+        print(line, flush=True)
+        try:
+            with open(os.path.join(self.dir, "console.log"), "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except OSError:
+            pass
+
+    def status_line(self):
+        now = self.clock()
+        nxt = now.floor("2h") + BAR + pd.Timedelta(seconds=self.s.signal_delay)
+        mins = int((nxt - now).total_seconds() // 60)
+        try:
+            mtm = self.broker.equity_mtm()
+            eq = f"equity {mtm:,.2f} ({mtm / self.state['equity0'] - 1:+.2%})"
+        except Exception as e:  # noqa: BLE001
+            eq = f"equity indisponível ({type(e).__name__})"
+        pos = []
+        for sym, p in self.state["positions"].items():
+            try:
+                bid, ask = self.broker.book(sym)
+                r = p["side"] * ((bid + ask) / 2 / p["entry_price"] - 1)
+                pos.append(f"{sym.replace('USDT', '')} {'L' if p['side'] == 1 else 'S'} {r:+.2%}")
+            except Exception:  # noqa: BLE001
+                pos.append(sym.replace("USDT", ""))
+        pend = [f"{s.replace('USDT', '')}(aguardando maker)" for s in self.state["pending"]]
+        self.log(f"{self.s.label} | {eq} | posições {len(self.state['positions'])}/{self.s.pf['max_pos']}: "
+                 f"{', '.join(pos + pend) or 'nenhuma'} | próxima vela em {mins // 60}h{mins % 60:02d}m"
+                 + (" | ⏸ PAUSADO" if self.state["paused"] else ""))
+
     def event(self, kind, **kw):
         _append(os.path.join(self.dir, "events.csv"), [{"time": str(self.clock()), "event": kind,
                                                         "data": json.dumps(kw, default=str)}])
@@ -106,7 +138,7 @@ class Trader:
             raise
         except Exception as e:  # noqa: BLE001
             tb = traceback.format_exc()
-            print(tb, flush=True)
+            self.log(tb)
             self.event("erro", erro=str(e), tb=tb[-2000:])
             self.tg.send(f"❗ Erro: {esc(str(e)[:300])}", key=f"err:{type(e).__name__}", every=900)
         self.save()
@@ -120,6 +152,8 @@ class Trader:
         if now < bar_close + pd.Timedelta(seconds=self.s.signal_delay):
             return
         if (now - bar_close).total_seconds() > self.s.max_late:
+            self.log(f"Vela {bar_time:%d/%m %H:%M} ignorada: robô iniciou {int((now - bar_close).total_seconds() // 60)} min "
+                     f"após o fechamento (limite {self.s.max_late // 60} min). Aguardando a próxima.")
             self.state["last_bar"] = str(bar_time)
             self.event("vela_ignorada_atraso", bar_time=bar_time)
             return
@@ -159,6 +193,12 @@ class Trader:
                          "edge_long": r.edge_long, "edge_short": r.edge_short, "side": int(r.side), "score": r.score,
                          "atr_pct": r.atr_pct, "close_spot": r.close_spot, "decision": dec, "model_hash": self.model_hash})
         _append(os.path.join(self.dir, "signals.csv"), rows)
+        lines = [f"Vela {bar_time:%d/%m %H:%M} UTC — limiar {self.s.sleeve['thr']}"]
+        for r in rows:
+            lado = "LONG " if r["side"] == 1 else "SHORT"
+            mark = "  <<<" if r["decision"] == "ENTRADA" else ""
+            lines.append(f"   {r['symbol']:9s} {lado} score {r['score']:+.3f}  {r['decision']}{mark}")
+        self.log("\n".join(lines))
         mtm = self.broker.equity_mtm()
         _append(os.path.join(self.dir, "equity.csv"), [{
             "time": str(now), "bar_time": str(bar_time), "equity_realized": self.broker.wallet(), "equity_mtm": mtm,

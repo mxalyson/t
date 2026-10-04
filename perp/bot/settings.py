@@ -48,6 +48,7 @@ class Settings:
     loop_sec: int = 15
     signal_delay: int = 60
     max_late: int = 900
+    console_status: int = 300
     frozen: dict = field(default_factory=dict)
 
     @property
@@ -88,7 +89,7 @@ def load_settings(env_path=None):
         tg_chat=g("TELEGRAM_CHAT_ID", ""), tg_daily=g("TELEGRAM_DAILY", "1") == "1",
         auto_retrain=g("AUTO_RETRAIN", "1") == "1", data_dir=g("DATA_DIR", ""),
         loop_sec=int(g("LOOP_SEC", 15)), signal_delay=int(g("SIGNAL_DELAY_SEC", 60)),
-        max_late=int(g("MAX_LATE_SEC", 900)),
+        max_late=int(g("MAX_LATE_SEC", 900)), console_status=int(g("CONSOLE_STATUS_SEC", 300)),
         frozen=json.load(open(os.path.join(ROOT, "config.json"))))
     if not s.data_dir:
         base = "paper" if s.mode == "paper" else f"live_{s.bybit_env}"

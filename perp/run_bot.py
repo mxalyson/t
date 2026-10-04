@@ -125,9 +125,14 @@ def main():
     trader, m, tg = build(s)
     trader.startup()
     print(f"Rodando ({s.label}). Registros em {s.data_dir}. Ctrl+C para parar.", flush=True)
+    trader.status_line()
+    last_status = time.time()
     try:
         while True:
             trader.step()
+            if s.console_status and time.time() - last_status >= s.console_status:
+                trader.status_line()
+                last_status = time.time()
             time.sleep(s.loop_sec)
     except KeyboardInterrupt:
         trader.save()
